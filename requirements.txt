@@ -1,0 +1,7 @@
+argparse
+beautifulsoup4
+fake_useragent
+requests
+selenium
+urllib3
+colorama
