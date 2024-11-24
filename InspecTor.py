@@ -51,6 +51,7 @@ import re
 import socket
 import sys
 import time
+import html
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urljoin, urlparse
 import requests
@@ -312,7 +313,14 @@ def extract_phone_numbers(page_text, default_region=None):
     # Remove duplicates
     return list(set(phone_numbers)) if phone_numbers else None
 
-
+def decode_email(encoded_str):
+    """
+    Decodes HTML character references and handles reversed strings if necessary.
+    """
+    # Decode HTML character references
+    decoded_str = html.unescape(encoded_str)
+    return decoded_str
+    
 def extract_metadata(url, use_selenium=False, fields=None, default_region=None):
     """
     Extracts metadata from a given URL.
@@ -581,8 +589,32 @@ def extract_metadata(url, use_selenium=False, fields=None, default_region=None):
 
                 # Extract emails if requested
                 if 'emails' in fields_to_extract:
-                    emails = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', page_text)
-                    metadata['emails'] = emails if emails else None
+                    emails = set()
+                    # Extract emails from the text
+                    text_emails = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', page_text)
+                    emails.update(text_emails)
+
+                    # Extract emails from href attributes
+                    for a_tag in soup.find_all('a', href=True):
+                        href = a_tag['href']
+                        if 'mailto:' in href:
+                            # Decode the href
+                            email = href.split('mailto:')[-1]
+                            email = decode_email(email)
+                            emails.add(email)
+
+                    # Extract emails from data attributes (handling reversed strings)
+                    for span in soup.find_all('span', {'class': 'odEmail'}):
+                        user = span.get('data-user', '')
+                        website = span.get('data-website', '')
+                        if user and website:
+                            # Reverse the strings
+                            user = user[::-1]
+                            website = website[::-1]
+                            email = f"{user}@{website}"
+                            emails.add(email)
+
+                    metadata['emails'] = list(emails) if emails else None
 
                 # Extract phone numbers if requested
                 if 'phone_numbers' in fields_to_extract:
