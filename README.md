@@ -151,7 +151,10 @@ python3 InspecTor.py -u https://www.example.com --force-tor
 - **`-human-readable`**, **`hr`**
     
     Output the results in a human-readable format.
-    
+
+- **`--default-region`**
+
+    Specify the phone numbers' format (FR for France)
 
 ### **Available Fields**
 
@@ -183,6 +186,12 @@ The following fields can be specified with the **`--fields`** argument:
 
 ```bash
 python3 InspecTor.py -u https://example.onion --fields emails -o emails.json
+```
+
+**To extract phone numbers from a website with French phone numbers:**
+
+```bash
+python3 InspecTor.py -u https://example.com --fields phone_numbers --default-region FR
 ```
 
 **Extract emails and links:**
