@@ -153,12 +153,12 @@ def setup_argparser():
         default='metadata.db',
         help='SQLite database file to store metadata (default: metadata.db).'
     )
-    # Removed individual extraction flags and introduced --fields
+    # Field extraction options
     extraction_group = parser.add_mutually_exclusive_group()
     extraction_group.add_argument(
         '--fields',
         nargs='+',
-        help='Specify which metadata fields to extract. Available fields: emails, phone_numbers, links, external_links, images, scripts, css_files, social_links, csp, server_technologies, crypto_wallets, headers, title, description, keywords, og_title, og_description, timestamp, http_headers'
+        help='Specify which metadata fields to extract. Available fields: url, title, description, keywords, og_title, og_description, timestamp, headers, images, scripts, css_files, social_links, csp, server_technologies, crypto_wallets, links, emails, external_links, http_headers, phone_numbers'
     )
     extraction_group.add_argument(
         '--extract-all',
@@ -174,6 +174,12 @@ def setup_argparser():
         '--force-tor',
         action='store_true',
         help='Route all traffic through Tor, even for regular URLs.'
+    )
+    parser.add_argument(
+        '--default-region',
+        type=str,
+        default=None,
+        help='Default region code for parsing phone numbers (e.g., "FR" for France).'
     )
     return parser
 
@@ -282,12 +288,13 @@ def is_valid_url(url):
         return False
 
 
-def extract_phone_numbers(page_text):
+def extract_phone_numbers(page_text, default_region=None):
     """
     Extracts phone numbers from the given text using the phonenumbers library.
 
     Args:
         page_text (str): Text content of the page.
+        default_region (str): Default region code (e.g., 'FR' for France).
 
     Returns:
         list or None: A list of extracted phone numbers or None if none found.
@@ -296,11 +303,8 @@ def extract_phone_numbers(page_text):
     phone_numbers = []
     for number in potential_numbers:
         try:
-            # Parse the number without specifying a region
-            parsed_number = phonenumbers.parse(number, None)
-            # Check if the number is valid
+            parsed_number = phonenumbers.parse(number, default_region)
             if phonenumbers.is_valid_number(parsed_number):
-                # Format the number in E.164 format
                 formatted_number = phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
                 phone_numbers.append(formatted_number)
         except NumberParseException:
@@ -309,7 +313,7 @@ def extract_phone_numbers(page_text):
     return list(set(phone_numbers)) if phone_numbers else None
 
 
-def extract_metadata(url, use_selenium=False, fields=None):
+def extract_metadata(url, use_selenium=False, fields=None, default_region=None):
     """
     Extracts metadata from a given URL.
 
@@ -317,6 +321,7 @@ def extract_metadata(url, use_selenium=False, fields=None):
         url (str): The URL to scrape.
         use_selenium (bool): Whether to use Selenium for dynamic content.
         fields (list or None): List of specific fields to extract.
+        default_region (str): Default region code for parsing phone numbers.
 
     Returns:
         dict or None: A dictionary of extracted metadata or None if an error occurs.
@@ -466,89 +471,88 @@ def extract_metadata(url, use_selenium=False, fields=None):
                     if ethereum_addresses:
                         crypto_wallets['ethereum'] = ethereum_addresses
 
-                    
                     # Litecoin
                     litecoin_legacy = re.findall(r'\b[L,M][a-km-zA-HJ-NP-Z1-9]{26,33}\b', page_text)
                     litecoin_bech32 = re.findall(r'\bltc1[a-z0-9]{39}\b', page_text)
                     if litecoin_legacy or litecoin_bech32:
                         crypto_wallets['litecoin'] = litecoin_legacy + litecoin_bech32
-            
+
                     # Dogecoin
                     dogecoin_addresses = re.findall(r'\bD{1}[5-9A-HJ-NP-U]{1}[1-9A-HJ-NP-Za-km-z]{32}\b', page_text)
                     if dogecoin_addresses:
                         crypto_wallets['dogecoin'] = dogecoin_addresses
-            
+
                     # Bitcoin Cash
                     bch_legacy = re.findall(r'\b[L,M][a-km-zA-HJ-NP-Z1-9]{26,33}\b', page_text)
                     bch_cashaddr = re.findall(r'\b(q|p)[a-z0-9]{41}\b', page_text)
                     if bch_legacy or bch_cashaddr:
                         crypto_wallets['bitcoin_cash'] = bch_legacy + bch_cashaddr
-            
+
                     # Dash
                     dash_addresses = re.findall(r'\b[X,7][a-km-zA-HJ-NP-Z1-9]{26,33}\b', page_text)
                     if dash_addresses:
                         crypto_wallets['dash'] = dash_addresses
-            
+
                     # Monero
                     monero_standard = re.findall(r'\b4[0-9AB][1-9A-HJ-NP-Za-km-z]{93}\b', page_text)
                     monero_integrated = re.findall(r'\b4[0-9AB][1-9A-HJ-NP-Za-km-z]{105}\b', page_text)
                     if monero_standard or monero_integrated:
                         crypto_wallets['monero'] = monero_standard + monero_integrated
-            
+
                     # Ripple
                     ripple_addresses = re.findall(r'\br[0-9A-Za-z]{24,34}\b', page_text)
                     if ripple_addresses:
                         crypto_wallets['ripple'] = ripple_addresses
-            
+
                     # Zcash
                     zcash_transparent = re.findall(r'\bt[1,3][a-km-zA-HJ-NP-Z1-9]{33}\b', page_text)
                     zcash_shielded = re.findall(r'\bzs[a-z0-9]{93}\b', page_text)
                     if zcash_transparent or zcash_shielded:
                         crypto_wallets['zcash'] = zcash_transparent + zcash_shielded
-            
+
                     # Binance Coin
                     binance_chain = re.findall(r'\bbnb1[a-z0-9]{38}\b', page_text)
                     binance_smart = re.findall(r'\b0x[a-fA-F0-9]{40}\b', page_text)
                     if binance_chain or binance_smart:
                         crypto_wallets['binance_coin'] = binance_chain + binance_smart
-            
+
                     # Cardano
                     cardano_addresses = re.findall(r'\baddr1[a-z0-9]{58}\b', page_text)
                     if cardano_addresses:
                         crypto_wallets['cardano'] = cardano_addresses
-            
+
                     # Stellar
                     stellar_addresses = re.findall(r'\bG[A-Z2-7]{55}\b', page_text)
                     if stellar_addresses:
                         crypto_wallets['stellar'] = stellar_addresses
-            
+
                     # Tether
                     tether_omni = re.findall(r'\b[13][a-km-zA-HJ-NP-Z1-9]{26,33}\b', page_text)
                     tether_erc20 = re.findall(r'\b0x[a-fA-F0-9]{40}\b', page_text)
                     tether_trc20 = re.findall(r'\bT[a-z0-9]{33}\b', page_text)
                     if tether_omni or tether_erc20 or tether_trc20:
                         crypto_wallets['tether'] = tether_omni + tether_erc20 + tether_trc20
-            
+
                     # Solana
                     solana_addresses = re.findall(r'\b[A-HJ-NP-Za-km-z1-9]{43,44}\b', page_text)
                     if solana_addresses:
                         crypto_wallets['solana'] = solana_addresses
-            
+
                     # Polkadot
                     polkadot_addresses = re.findall(r'\b[15,2][a-z0-9]{46}\b', page_text)
                     if polkadot_addresses:
                         crypto_wallets['polkadot'] = polkadot_addresses
-            
+
                     # Chainlink
                     chainlink_addresses = re.findall(r'\b0x[a-fA-F0-9]{40}\b', page_text)
                     if chainlink_addresses:
                         crypto_wallets['chainlink'] = chainlink_addresses
-            
+
                     # Ethereum Classic
                     etc_addresses = re.findall(r'\b0x[a-fA-F0-9]{40}\b', page_text)
                     if etc_addresses:
                         crypto_wallets['ethereum_classic'] = etc_addresses
-            
+
                     # Remove duplicates
                     for key in crypto_wallets:
                         crypto_wallets[key] = list(set(crypto_wallets[key]))
@@ -582,7 +586,7 @@ def extract_metadata(url, use_selenium=False, fields=None):
 
                 # Extract phone numbers if requested
                 if 'phone_numbers' in fields_to_extract:
-                    phone_numbers = extract_phone_numbers(page_text)
+                    phone_numbers = extract_phone_numbers(page_text, default_region=default_region)
                     metadata['phone_numbers'] = phone_numbers if phone_numbers else None
 
     except requests.exceptions.RequestException as e:
@@ -802,7 +806,8 @@ def main():
                 extract_metadata,
                 url,
                 args.use_selenium,
-                fields
+                fields,
+                default_region=args.default_region
             ): url for url in valid_urls
         }
         for future in as_completed(future_to_url):
