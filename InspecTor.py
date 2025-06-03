@@ -25,7 +25,6 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
-from urllib import robotparser
 import sqlite3
 from urllib3.util.retry import Retry
 from fake_useragent import UserAgent
@@ -34,9 +33,6 @@ import phonenumbers
 from phonenumbers import NumberParseException
 from urllib3.exceptions import InsecureRequestWarning
 import urllib3
-
-# Disable insecure request warnings if SSL verification is off.
-urllib3.disable_warnings(category=InsecureRequestWarning)
 
 try:
     from colorama import Fore, Style, init
@@ -199,6 +195,8 @@ def setup_session(verify_ssl=True, use_tor=False):
 
     # Handle SSL verification if disabled
     session.verify = verify_ssl
+    if not verify_ssl:
+        urllib3.disable_warnings(category=InsecureRequestWarning)
 
     # Try to use a randomized User-Agent to avoid easy fingerprinting
     ua = UserAgent()
